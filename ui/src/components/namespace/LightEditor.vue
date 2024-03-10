@@ -248,6 +248,7 @@
     const inputRef = ref();
     const focusInputRef = () => nextTick(() => inputRef.value.focus());
     const fileDialog = ref({visible: false, name: "", extension: ""});
+    const getLanguage = (extension) => extension === "js" ? "javascript" : extension;
     const extensions = [
         {label: "JavaScript", value: "js"},
         {label: "YAML", value: "yaml"},
@@ -262,12 +263,18 @@
             content,
         });
         fileDialog.value = {visible: false, name: "", extension: ""};
+
+        nextTick(() => {
+            openedTabs.value.push({
+                name: `${name}.${extension}`,
+                language: getLanguage(extension),
+                content: content,
+            });
+            currentTab.value = openedTabs.value.length - 1;
+        });
     };
 
     const nodeClick = (node) => {
-        const getLanguage = (extension) =>
-            extension === "js" ? "javascript" : extension;
-
         if (openedTabs.value.find((tab) => tab.name === node.label)) {
             currentTab.value = openedTabs.value.findIndex(
                 (tab) => tab.name === node.label
