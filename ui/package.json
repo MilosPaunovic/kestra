@@ -12,6 +12,7 @@
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix"
   },
   "dependencies": {
+    "@guolao/vue-monaco-editor": "^1.5.1",
     "@kestra-io/ui-libs": "^0.0.37",
     "@popperjs/core": "npm:@sxzz/popperjs-es@2.11.7",
     "@vue-flow/background": "^1.2.0",
@@ -73,6 +74,7 @@
     "monaco-editor": "0.39.0",
     "monaco-yaml": "4.0.0-alpha.0",
     "prettier": "^3.2.5",
+    "rollup": "^4.12.1",
     "rollup-plugin-copy": "^3.5.0",
     "rollup-plugin-visualizer": "^5.12.0",
     "sass": "^1.71.1",
