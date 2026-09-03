@@ -1,8 +1,0 @@
-kestra:
-  queue:
-    type: memory
-  repository:
-    type: memory
-  server:
-    liveness:
-      enabled: false
