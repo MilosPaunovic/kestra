@@ -1,0 +1,29 @@
+id: working-directory
+namespace: io.kestra.tests
+
+inputs:
+  - id: failed
+    type: STRING
+
+tasks:
+  - id: worker
+    type: io.kestra.core.tasks.flows.WorkingDirectory
+    tasks:
+      - id: first
+        type: io.kestra.core.tasks.storages.LocalFiles
+        inputs:
+          out/stay.txt: "{{ inputs.failed == 'true' ? ko: taskrun.id }}"
+      - id: second
+        type: io.kestra.core.tasks.storages.LocalFiles
+        outputs:
+          - out/*
+      - id: disabled
+        type: io.kestra.core.tasks.debugs.Return
+        disabled: true
+    errors:
+      - id: error-t1
+        type: io.kestra.core.tasks.debugs.Return
+        format: "Error Trigger ! {{task.id}}"
+  - id: 2_end
+    type: io.kestra.core.tasks.debugs.Return
+    format: "{{ outputs.second.uris['out/stay.txt'] }}"

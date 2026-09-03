@@ -1,0 +1,11 @@
+id: listeners-failed
+namespace: io.kestra.tests
+
+listeners:
+  - tasks:
+      - id: ko
+        type: io.kestra.core.tasks.executions.Fail
+tasks:
+  - id: first
+    type: io.kestra.core.tasks.debugs.Return
+    format: "{{task.id}} > {{taskrun.startDate}}"

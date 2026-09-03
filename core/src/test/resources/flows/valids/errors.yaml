@@ -1,0 +1,26 @@
+id: errors
+namespace: io.kestra.tests
+
+tasks:
+- id: failed
+  type: io.kestra.core.tasks.executions.Fail
+errors:
+  - id: t2
+    type: io.kestra.core.tasks.log.Log
+    message: second {{task.id}}
+
+  - id: t3
+    type: io.kestra.core.tasks.flows.Parallel
+    tasks:
+      - id: t3-t1
+        type: io.kestra.core.tasks.flows.Parallel
+        tasks:
+          - id: t3-t1-t1
+            type: io.kestra.core.tasks.flows.Parallel
+            tasks:
+              - id: t3-t1-t1-t1
+                type: io.kestra.core.tasks.flows.Parallel
+                tasks:
+                  - id: t3-t1-t1-t1-last
+                    type: io.kestra.core.tasks.log.Log
+                    message: "t3-t1-t1-t1-last : {{task.id}}"

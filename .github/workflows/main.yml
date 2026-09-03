@@ -1,0 +1,430 @@
+name: Main
+
+on:
+  push:
+    branches:
+      - master
+      - release
+      - develop
+    tags:
+      - v*
+
+  pull_request:
+    branches:
+      - master
+      - release
+      - develop
+  repository_dispatch:
+    types: [ rebuild ]
+  workflow_dispatch:
+    inputs:
+      skip-test:
+        description: 'Skip test'
+        required: false
+        type: string
+        default: "false"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    name: Check & Publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+          architecture: 'x64'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          check-latest: true
+
+      # Services
+      - name: Build the docker-compose stack
+        run: docker-compose -f docker-compose-ci.yml up -d
+        if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
+
+      # Caches
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle*.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Npm cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Node cache
+        uses: actions/cache@v4
+        with:
+          path: node
+          key: ${{ runner.os }}-node-${{ hashFiles('ui/*.gradle') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: SonarCloud cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      # JDK
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 17
+
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@v2
+
+      # Gradle check
+      - name: Build with Gradle
+        if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
+        env:
+          GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+        run: |
+          python3 -m pip install virtualenv
+          echo $GOOGLE_SERVICE_ACCOUNT | base64 -d > ~/.gcp-service-account.json
+          export GOOGLE_APPLICATION_CREDENTIALS=$HOME/.gcp-service-account.json
+          ./gradlew check jacoco javadoc --no-daemon --priority=normal
+
+      # report test
+      - name: Test Report
+        uses: mikepenz/action-junit-report@v4
+        if: success() || failure()
+        with:
+          report_paths: '**/build/test-results/**/TEST-*.xml'
+
+      - name: Analyze with Sonar
+        if: ${{ env.SONAR_TOKEN != 0 }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: ./gradlew sonar --info
+
+      # Codecov
+      - uses: codecov/codecov-action@v4
+        if: ${{ github.event.inputs.skip-test == 'false' || github.event.inputs.skip-test == '' }}
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      # Shadow Jar
+      - name: Build jars
+        run: ./gradlew executableJar --no-daemon --priority=normal
+
+      # Upload artifacts
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: jar
+          path: build/libs/
+
+      - name: Upload Executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: exe
+          path: build/executable/
+
+      # GitHub Release
+      - name: Create GitHub release
+        uses: "marvinpinto/action-automatic-releases@latest"
+        if: startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          prerelease: false
+          files: |
+            build/executable/*
+
+      - name: Flow to add BC
+        if: startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
+        run: |
+          curl --location "http://18.153.185.126:8080/api/v1/executions/webhook/product/release_notes/${{secrets.KESTRA_WEBHOOK_KEY}}" \
+          --header 'Content-Type: application/json'
+
+  docker:
+    name: Publish docker
+    runs-on: ubuntu-latest
+    needs: check
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/release' || startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      matrix:
+        image:
+          - name: ""
+            plugins: ""
+            packages: ""
+            python-libs: ""
+          - name: "-full"
+            plugins: >-
+              io.kestra.plugin:plugin-airbyte:LATEST
+              io.kestra.plugin:plugin-amqp:LATEST
+              io.kestra.plugin:plugin-ansible:LATEST
+              io.kestra.plugin:plugin-aws:LATEST
+              io.kestra.plugin:plugin-azure:LATEST
+              io.kestra.plugin:plugin-cassandra:LATEST
+              io.kestra.plugin:plugin-cloudquery:LATEST
+              io.kestra.plugin:plugin-compress:LATEST
+              io.kestra.plugin:plugin-couchbase:LATEST
+              io.kestra.plugin:plugin-crypto:LATEST
+              io.kestra.plugin:plugin-databricks:LATEST
+              io.kestra.plugin:plugin-dataform:LATEST
+              io.kestra.plugin:plugin-dbt:LATEST
+              io.kestra.plugin:plugin-debezium-mysql:LATEST
+              io.kestra.plugin:plugin-debezium-postgres:LATEST
+              io.kestra.plugin:plugin-debezium-sqlserver:LATEST
+              io.kestra.plugin:plugin-docker:LATEST
+              io.kestra.plugin:plugin-elasticsearch:LATEST
+              io.kestra.plugin:plugin-fivetran:LATEST
+              io.kestra.plugin:plugin-fs:LATEST
+              io.kestra.plugin:plugin-gcp:LATEST
+              io.kestra.plugin:plugin-git:LATEST
+              io.kestra.plugin:plugin-googleworkspace:LATEST
+              io.kestra.plugin:plugin-hightouch:LATEST
+              io.kestra.plugin:plugin-jdbc-clickhouse:LATEST
+              io.kestra.plugin:plugin-jdbc-duckdb:LATEST
+              io.kestra.plugin:plugin-jdbc-druid:LATEST
+              io.kestra.plugin:plugin-jdbc-mysql:LATEST
+              io.kestra.plugin:plugin-jdbc-oracle:LATEST
+              io.kestra.plugin:plugin-jdbc-pinot:LATEST
+              io.kestra.plugin:plugin-jdbc-postgres:LATEST
+              io.kestra.plugin:plugin-jdbc-redshift:LATEST
+              io.kestra.plugin:plugin-jdbc-rockset:LATEST
+              io.kestra.plugin:plugin-jdbc-snowflake:LATEST
+              io.kestra.plugin:plugin-jdbc-sqlserver:LATEST
+              io.kestra.plugin:plugin-jdbc-trino:LATEST
+              io.kestra.plugin:plugin-jdbc-vectorwise:LATEST
+              io.kestra.plugin:plugin-jdbc-vertica:LATEST
+              io.kestra.plugin:plugin-jdbc-dremio:LATEST
+              io.kestra.plugin:plugin-jdbc-arrow-flight:LATEST
+              io.kestra.plugin:plugin-jdbc-sqlite:LATEST
+              io.kestra.plugin:plugin-kafka:LATEST
+              io.kestra.plugin:plugin-kubernetes:LATEST
+              io.kestra.plugin:plugin-malloy:LATEST
+              io.kestra.plugin:plugin-modal:LATEST
+              io.kestra.plugin:plugin-mongodb:LATEST
+              io.kestra.plugin:plugin-mqtt:LATEST
+              io.kestra.plugin:plugin-nats:LATEST
+              io.kestra.plugin:plugin-neo4j:LATEST
+              io.kestra.plugin:plugin-notifications:LATEST
+              io.kestra.plugin:plugin-openai:LATEST
+              io.kestra.plugin:plugin-powerbi:LATEST
+              io.kestra.plugin:plugin-pulsar:LATEST
+              io.kestra.plugin:plugin-redis:LATEST
+              io.kestra.plugin:plugin-script-groovy:LATEST
+              io.kestra.plugin:plugin-script-julia:LATEST
+              io.kestra.plugin:plugin-script-jython:LATEST
+              io.kestra.plugin:plugin-script-nashorn:LATEST
+              io.kestra.plugin:plugin-script-node:LATEST
+              io.kestra.plugin:plugin-script-powershell:LATEST
+              io.kestra.plugin:plugin-script-python:LATEST
+              io.kestra.plugin:plugin-script-r:LATEST
+              io.kestra.plugin:plugin-script-ruby:LATEST
+              io.kestra.plugin:plugin-script-shell:LATEST
+              io.kestra.plugin:plugin-serdes:LATEST
+              io.kestra.plugin:plugin-servicenow:LATEST
+              io.kestra.plugin:plugin-singer:LATEST
+              io.kestra.plugin:plugin-soda:LATEST
+              io.kestra.plugin:plugin-solace:LATEST
+              io.kestra.plugin:plugin-spark:LATEST
+              io.kestra.plugin:plugin-sqlmesh:LATEST
+              io.kestra.plugin:plugin-surrealdb:LATEST
+              io.kestra.plugin:plugin-terraform:LATEST
+              io.kestra.plugin:plugin-tika:LATEST
+              io.kestra.plugin:plugin-weaviate:LATEST
+              io.kestra.storage:storage-azure:LATEST
+              io.kestra.storage:storage-gcs:LATEST
+              io.kestra.storage:storage-minio:LATEST
+              io.kestra.storage:storage-s3:LATEST
+            packages: python3 python3-venv python-is-python3 python3-pip nodejs npm curl zip unzip
+            python-libs: kestra
+    steps:
+      - uses: actions/checkout@v4
+
+      # Artifact
+      - name: Download executable
+        uses: actions/download-artifact@v4
+        with:
+          name: exe
+          path: build/executable
+
+      - name: Copy exe to image
+        run: |
+          cp build/executable/* docker/app/kestra && chmod +x docker/app/kestra
+
+      # Vars
+      - name: Set image name
+        id: vars
+        run: |
+          TAG=${GITHUB_REF#refs/*/}
+          if [[ $TAG = "master" ]]
+          then
+            echo "tag=latest" >> $GITHUB_OUTPUT
+            echo "plugins=${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT
+          elif [[ $TAG == v* ]]
+          then
+            echo "tag=${TAG}" >> $GITHUB_OUTPUT
+            echo "plugins=${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${TAG}" >> $GITHUB_OUTPUT
+            echo "plugins=--repositories=https://s01.oss.sonatype.org/content/repositories/snapshots ${{ matrix.image.plugins }}" >> $GITHUB_OUTPUT
+          fi
+
+      # Docker setup
+      - name: Set up QEMU
+        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/release' || startsWith(github.ref, 'refs/tags/v')
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/release' || startsWith(github.ref, 'refs/tags/v')
+        uses: docker/setup-buildx-action@v3
+
+      # Docker Login
+      - name: Login to DockerHub
+        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/release' || startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      # Docker Build and push
+      - name: Push to Docker Hub
+        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/release' || startsWith(github.ref, 'refs/tags/v')
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ format('kestra/kestra:{0}{1}', steps.vars.outputs.tag, matrix.image.name) }}
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            KESTRA_PLUGINS=${{ steps.vars.outputs.plugins }}
+            APT_PACKAGES=${{ matrix.image.packages }}
+            PYTHON_LIBRARIES=${{ matrix.image.python-libs }}
+
+  maven:
+    name: Publish to Maven
+    runs-on: ubuntu-latest
+    needs: check
+    if: github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      # Caches
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle*.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Npm cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Node cache
+        uses: actions/cache@v4
+        with:
+          path: node
+          key: ${{ runner.os }}-node-${{ hashFiles('ui/*.gradle') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      # JDK
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 17
+
+      # Publish
+      - name: Publish package to Sonatype
+        if: github.ref == 'refs/heads/develop'
+        env:
+          ORG_GRADLE_PROJECT_sonatypeUsername: ${{ secrets.SONATYPE_USER }}
+          ORG_GRADLE_PROJECT_sonatypePassword: ${{ secrets.SONATYPE_PASSWORD }}
+          SONATYPE_GPG_KEYID: ${{ secrets.SONATYPE_GPG_KEYID }}
+          SONATYPE_GPG_PASSWORD: ${{ secrets.SONATYPE_GPG_PASSWORD }}
+          SONATYPE_GPG_FILE: ${{ secrets.SONATYPE_GPG_FILE }}
+        run: |
+          mkdir -p ~/.gradle/
+          echo "signing.keyId=${SONATYPE_GPG_KEYID}" > ~/.gradle/gradle.properties
+          echo "signing.password=${SONATYPE_GPG_PASSWORD}" >> ~/.gradle/gradle.properties
+          echo "signing.secretKeyRingFile=${HOME}/.gradle/secring.gpg" >> ~/.gradle/gradle.properties
+          echo ${SONATYPE_GPG_FILE} | base64 -d > ~/.gradle/secring.gpg
+          ./gradlew publishToSonatype --no-daemon --priority=normal
+
+      # Release
+      - name: Release package to Maven Central
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          ORG_GRADLE_PROJECT_sonatypeUsername: ${{ secrets.SONATYPE_USER }}
+          ORG_GRADLE_PROJECT_sonatypePassword: ${{ secrets.SONATYPE_PASSWORD }}
+          SONATYPE_GPG_KEYID: ${{ secrets.SONATYPE_GPG_KEYID }}
+          SONATYPE_GPG_PASSWORD: ${{ secrets.SONATYPE_GPG_PASSWORD }}
+          SONATYPE_GPG_FILE: ${{ secrets.SONATYPE_GPG_FILE }}
+        run: |
+          echo "signing.keyId=${SONATYPE_GPG_KEYID}" > ~/.gradle/gradle.properties
+          echo "signing.password=${SONATYPE_GPG_PASSWORD}" >> ~/.gradle/gradle.properties
+          echo "signing.secretKeyRingFile=${HOME}/.gradle/secring.gpg" >> ~/.gradle/gradle.properties
+          echo ${SONATYPE_GPG_FILE} | base64 -d > ~/.gradle/secring.gpg
+          ./gradlew publishToSonatype closeAndReleaseSonatypeStagingRepository --no-daemon --priority=normal
+
+  end:
+    runs-on: ubuntu-latest
+    needs:
+      - check
+      - maven
+      - docker
+    if: always()
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    steps:
+
+      # Update
+      - name: Update internal
+        uses: benc-uk/workflow-dispatch@v1
+        if: github.ref == 'refs/heads/develop'
+        with:
+          workflow: oss-build.yml
+          repo: kestra-io/infra
+          ref: master
+          token: ${{ secrets.GH_PERSONAL_TOKEN }}
+
+      # Slack
+      - name: Slack notification
+        uses: Gamesight/slack-workflow-status@master
+        if: ${{ always() && env.SLACK_WEBHOOK_URL != 0 }}
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          name: GitHub Actions
+          icon_emoji: ':github-actions:'
+          channel: 'C02DQ1A7JLR' # _int_git channel

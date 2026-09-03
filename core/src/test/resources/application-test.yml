@@ -1,0 +1,60 @@
+jackson:
+  serialization:
+    writeDatesAsTimestamps: false
+    writeDurationsAsTimestamps: false
+  serialization-inclusion: non_default
+
+kestra:
+  encryption:
+    secret-key: I6EGNzRESu3X3pKZidrqCGOHQFUFC0yK
+  url: https://mysuperhost.com/subpath
+  repository:
+    type: memory
+  queue:
+    type: memory
+  storage:
+    type: local
+    local:
+      base-path: /tmp/unittest
+
+  variables:
+    globals:
+      string: "string"
+      int: 1
+      bool: true
+      nested:
+        int: 2
+
+  tasks:
+    defaults:
+    - type: io.kestra.core.services.TaskDefaultServiceTest$DefaultTester
+      values:
+        doubleValue: 19
+        arrays:
+          - 2
+        property:
+          here: me
+          lists:
+          - val:
+              key: test
+
+  anonymous-usage-report:
+    enabled: false
+    uri: http://localhost:8080/
+
+  unittest: true
+
+  plugins:
+    configurations:
+      - type: io.kestra.plugin.Test0
+        values:
+          prop0: value0
+      - type: io.kestra.plugin.Test1
+        values:
+          prop1: value1
+      - type: io.kestra.plugin.Test2
+        values:
+          prop2: value2
+      - type: io.kestra.core.models.triggers.types.Schedule
+        values:
+          recoverMissedSchedules: ALL

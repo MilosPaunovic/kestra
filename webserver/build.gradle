@@ -1,0 +1,32 @@
+publishSonatypePublicationPublicationToSonatypeRepository.enabled = false
+
+if (rootProject.name == "kestra") {
+    processResources {
+        dependsOn(':ui:assembleFrontend')
+    }
+}
+
+dependencies {
+
+    annotationProcessor "io.micronaut.openapi:micronaut-openapi"
+    implementation "io.swagger.core.v3:swagger-annotations"
+
+    implementation project(":core")
+
+    implementation "io.micronaut:micronaut-management"
+    implementation "io.micronaut:micronaut-http-client"
+    implementation "io.micronaut:micronaut-http-server-netty"
+    implementation "io.micronaut.cache:micronaut-cache-core"
+    implementation "io.micronaut.cache:micronaut-cache-caffeine"
+
+    // test
+    testImplementation project(':core').sourceSets.test.output
+    testImplementation project(':storage-local')
+    testImplementation("com.github.tomakehurst:wiremock-jre8:3.0.1")
+
+    testImplementation project(':jdbc')
+    testImplementation project(':jdbc').sourceSets.test.output
+    testImplementation project(':jdbc-h2')
+    testImplementation("io.micronaut.sql:micronaut-jooq")
+}
+

@@ -1,0 +1,14 @@
+id: listener
+namespace: io.kestra.tests
+
+listeners:
+  - conditions:
+      - type: io.kestra.core.models.conditions.types.ExecutionStatusCondition
+    tasks: []
+
+  - tasks: []
+
+tasks:
+  - id: date
+    type: io.kestra.core.tasks.debugs.Return
+    format: "{{taskrun.startDate}}"

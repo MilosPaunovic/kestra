@@ -1,0 +1,39 @@
+id: duplicate
+namespace: io.kestra.tests
+
+listeners:
+  - tasks:
+      - id: listen
+        type: io.kestra.core.tasks.debugs.Return
+        format: "{{taskrun.startDate}}"
+
+tasks:
+  - id: date
+    type: io.kestra.core.tasks.debugs.Return
+    format: "{{taskrun.startDate}}"
+  - id: listen
+    type: io.kestra.core.tasks.debugs.Return
+    format: "{{taskrun.startDate}}"
+
+  - id: seq
+    type: io.kestra.core.tasks.flows.Sequential
+    tasks:
+      - id: date
+        type: io.kestra.core.tasks.debugs.Return
+        format: "{{taskrun.startDate}}"
+    errors:
+      - id: date
+        type: io.kestra.core.tasks.debugs.Return
+        format: "{{taskrun.startDate}}"
+
+errors:
+  - id: date
+    type: io.kestra.core.tasks.debugs.Return
+    format: "{{taskrun.startDate}}"
+triggers:
+  - id: trigger
+    type: io.kestra.core.models.triggers.types.Schedule
+    cron: '* * * * *'
+  - id: trigger
+    type: io.kestra.core.models.triggers.types.Webhook
+    key: t

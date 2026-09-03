@@ -1,0 +1,14 @@
+id: working-directory-taskrun
+namespace: io.kestra.tests
+
+tasks:
+  - id: parallel
+    type: io.kestra.core.tasks.flows.EachParallel
+    value: ["1"]
+    tasks:
+      - id: workingDir
+        type: io.kestra.core.tasks.flows.WorkingDirectory
+        tasks:
+          - id: log-taskrun
+            type: io.kestra.core.tasks.debugs.Return
+            format:  "{{ taskrun.value }}"

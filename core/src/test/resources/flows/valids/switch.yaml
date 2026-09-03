@@ -1,0 +1,48 @@
+id: switch
+namespace: io.kestra.tests
+
+inputs:
+  - id: string
+    type: STRING
+  - id: def
+    type: STRING
+    defaults: amazing
+
+labels:
+  switchFlowLabel: switchFoo
+
+tasks:
+  - id: parent-seq
+    type: io.kestra.core.tasks.flows.Switch
+    value: "{{inputs.string}}"
+    cases:
+      FIRST:
+        - id: t1
+          type: io.kestra.core.tasks.debugs.Return
+          format: "{{task.id}} > {{taskrun.startDate}}"
+      SECOND:
+        - id: t2
+          type: io.kestra.core.tasks.debugs.Return
+          format: "{{task.id}} > {{taskrun.startDate}}"
+        - id: t2_sub
+          type: io.kestra.core.tasks.debugs.Return
+          format: "{{task.id}} > {{taskrun.startDate}}"
+      THIRD:
+        - id: t3
+          type: io.kestra.core.tasks.flows.Sequential
+          tasks:
+            - id: failed
+              type: io.kestra.core.tasks.executions.Fail
+          errors:
+            - id: error-t1
+              type: io.kestra.core.tasks.debugs.Return
+              format: "Error Trigger ! {{task.id}}"
+    defaults:
+      - id: default
+        type: io.kestra.core.tasks.debugs.Return
+        format: "{{task.id}} > {{ inputs.def }} > {{taskrun.startDate}}"
+
+triggers:
+  - id: schedule
+    type: io.kestra.core.models.triggers.types.Schedule
+    cron: "0 * * * *"

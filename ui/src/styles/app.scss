@@ -1,0 +1,109 @@
+@use "@kestra-io/ui-libs/src/scss/variables.scss" as global-var;
+@use 'element-plus/theme-chalk/src/mixins/mixins' as mixin;
+
+@use "@kestra-io/ui-libs/src/scss/app.scss";
+
+// element-plus
+@use "layout/element-plus-overload";
+
+// vue-tour
+@use "vue3-tour/dist/vue3-tour.css";
+@use "layout/vue-tour-overload.scss";
+
+// layout
+@use "layout/root";
+@use "layout/root-dark";
+@use "layout/html-tag" as *;
+
+// components
+@use "layout/charts";
+@use "components/vue-material-design-icon";
+@use "components/vue-nprogress" with (
+    $indigo: global-var.$indigo
+);
+
+html, body, #app, #app-container {
+    height: 100%;
+}
+
+html {
+    transition: padding-left 0.3s ease;
+
+    code[class*="language-"], pre[class*="language-"]  {
+        white-space: pre-wrap !important;
+    }
+
+    &.menu-collapsed {
+        #{--offset-from-menu}: var(--spacer);
+        padding-left: var(--menu-collapsed-width);
+    }
+
+    &.menu-not-collapsed {
+        #{--offset-from-menu}: var(--spacer);
+        @include mixin.res(lg) {
+            #{--offset-from-menu}: calc(var(--spacer) * 4);
+        }
+
+        padding-left: var(--menu-width);
+    }
+}
+
+// main layout
+main {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+
+    &:has(section.full-container) {
+        max-height: 100%;
+    }
+
+    > section.container {
+        margin: var(--spacer) auto 0;
+        min-width: 100%;
+        transition: padding 0.3s ease;
+        padding: 0 calc(var(--offset-from-menu));
+
+        &.full-height {
+            flex: 1;
+            display: flex;
+            min-height: 0;
+            > * {
+                flex: 1;
+            }
+        }
+    }
+
+    > section.full-container {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+
+        > * {
+            flex: 1;
+        }
+    }
+}
+
+// status
+@each $key, $value in global-var.$colors {
+    .bg-#{$key} {
+        background-color: $value;
+    }
+
+    .el-button.status-#{$key} {
+        cursor: default;
+        border: 0.5px solid $value;
+        background: var(--bs-white);
+
+        .material-design-icon {
+            color: $value;
+        }
+
+        html.dark & {
+            background: var(--bs-tertiary);
+        }
+    }
+}
+

@@ -1,0 +1,23 @@
+services:
+  mysql:
+    image: mysql
+    environment:
+      MYSQL_DATABASE: kestra_unit
+      MYSQL_USER: kestra
+      MYSQL_PASSWORD: k3str4
+      MYSQL_ROOT_PASSWORD: "p4ssw0rd"
+    command:
+      - --log-bin-trust-function-creators=1
+    ports:
+      - 3306:3306
+    restart: on-failure
+
+  postgres:
+    image: postgres
+    environment:
+      POSTGRES_DB: kestra_unit
+      POSTGRES_USER: kestra
+      POSTGRES_PASSWORD: k3str4
+    ports:
+      - 5432:5432
+    restart: on-failure
