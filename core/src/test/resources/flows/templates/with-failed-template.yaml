@@ -1,8 +1,0 @@
-id: with-failed-template
-namespace: io.kestra.tests
-
-tasks:
-  - id: template
-    type: io.kestra.core.tasks.flows.Template
-    namespace: io.kestra.tests
-    templateId: invalid
